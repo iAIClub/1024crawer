@@ -1,30 +1,30 @@
 import urllib.request
-import os
-import re
-import time
-import socket
-from bs4 import BeautifulSoup
+from lxml import etree
+proxy_handler = urllib.request.ProxyHandler({'http': 'http://127.0.0.1:1080/'})
+opener = urllib.request.build_opener(proxy_handler)
+headers = {
+    'User-Agent' : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.124 Safari/537.36',
+    }
 def crawerEach(url,urldir):
-    resp=urllib.request.urlopen(url)
+    request = urllib.request.Request(url, headers = headers)
+    resp=opener.open(request)
     html=resp.read().decode('gbk')
-    soup = BeautifulSoup(html)
-    items=soup.find('body').find('div',id='main').find(name='div',attrs={"class":"t","style":"margin:3px auto"}
-                                                       ).find('table',id='ajaxtable'
-                                                              ).find("tbody").findAll(name="tr",attrs={"class":"tr3 t_one"})
-    for item in items:
-        target=item.find(name='td',attrs={"style":"text-align:left;padding-left:8px"}).find('h3').find('a')
-        if target.u ==  None and target.b == None and target.font == None:
-            urldir[target.text] = "http://wo.yao.cl/"+target.get('href')
+    selector = etree.HTML(html)
+    content_field = selector.xpath('//tbody[1]/tr/td/h3/a')
+    for each in content_field:
+        urldir[each.xpath('string(.)')] = "http://cc.bearhk.info/"+each.attrib['href']
     return urldir
 #爬下所有文章的标题的URL地址    
 def crawer():
     urldir={}
-    for i in range(39):
-        url="http://wo.yao.cl/thread0806.php?fid=20&page="+str(i+1)
+    for i in range(27):
+        url="http://cc.bearhk.info/thread0806.php?fid=20&page="+str(i+1)
         print("=====================正在爬取第"+str(i+1)+"页=========")
         urldir=crawerEach(url,urldir)
+        # if i%4==0:
+        #     time.sleep(5)
     f=open("all.xml",'w',encoding="utf-8")
-    for key,url in urldir.items() :
+    for key,url in urldir.items():
         firstColumn="<article title="+"\""+key+"\">"
         secondColumn="   "+"<url>"+url+"</url>"
         thirdColumn="</article>"
@@ -37,120 +37,91 @@ def search():
     keyword = input("请输入关键字：")
     file=open("all.xml",'r',encoding='utf-8')
     content=file.read()
-    soup=BeautifulSoup(content)
-    items=soup.findAll(name="article",attrs={"title":re.compile(keyword)})
-    for item in items:
-        print(item.get('title') + item.text)
+    selector = etree.HTML(content)
+    name = selector.xpath("//article[contains(@title,'%s')]/@title"%keyword)#要区分大小写 蛋疼
+    url = selector.xpath("//article[contains(@title,'%s')]/url/text()"%keyword)
+    for i in range(len(url)):
+        print(name[i],url[i])
+
 
 #获得文章内容
-def getContent(soup , author ,url, pageAccount):
-    contents = soup.body.find(name='div',attrs={'id':'main'}).findAll(name='div',attrs={'class':'t t2'})
-    tid = url[-12:]
+def getContent(html ,url, pageAccount):
+    selector = etree.HTML(html)
+    contents = selector.xpath('//div[@class="tpc_content do_not_catch"]/text()')
+    tid = url[-12:-5]
     print (tid)
     #获得首页的文章内容
     for item in contents:
-        if(item.find('table').find(name='tr',attrs={'class':'tr3 tr1'}).find('font').b.text == author):
-            content = item.table.find(name='tr',attrs={'class':'tr3 tr1'}).find(name='th',attrs={'class':'r_one'}
-                                                                            ).table.tr.td.find(name='div',attrs={'class':'tpc_content'}).text
-            writeContent(content)
-            print(content)
-            print("")
+        writeContent(item)
+        print(item)
+        print("")
     pageInt = int(pageAccount)
     i = 2
     while i<=pageInt:
-        pageUrl = "http://wo.yao.cl/read.php?tid=" + tid + "&page=" + str(i)
+        pageUrl = "http://cc.bearhk.info/read.php?tid=" + tid + "&page=" + str(i)
         print(pageUrl)
-        getAuthorFloorContent(pageUrl,author)
+        getAuthorFloorContent(pageUrl)
         i=i+1
-    print(pageUrl)
+        print(pageUrl)
+#获得第2页以后的页面的作者的楼层中的内容
+def getAuthorFloorContent(pageUrl):
+    request = urllib.request.Request(pageUrl, headers = headers)
+    resp=opener.open(request)
+    html=resp.read().decode('gbk')
+    selector = etree.HTML(html)
+    contents = selector.xpath('//div[@class="tpc_content"]')
+    for item in contents:
+        if len(''.join(item.xpath('./text()')))>500:
+            writeContent('\n'.join(item.xpath('./text()')))
+            print(''.join(item.xpath('./text()')))
+            print("")
+
 
 #把内容写入文件
 def writeContent(content):
     f=open('content1.txt','a',encoding='utf-8')
     f.write(content)
     f.write('\n')
-    f.write('\n')
-    f.write('\n')
-    f.write('\n')
     f.close()
 
-
-
-'''以下为获得内容所做的准备'''
-#获得第2页以后的页面的作者的楼层中的内容
-def getAuthorFloorContent(pageUrl,author):
-    resp=urllib.request.urlopen(pageUrl)
-    html=resp.read().decode('gbk')
-    soup = BeautifulSoup(html)
-    #获得所有楼层
-    contents = soup.body.find(name='div',attrs={'id':'main'}).findAll(name='div',attrs={'class':'t t2'})
-    
-    for item in contents:
-        #在所有楼层中选出作者的楼层
-        if(item.find('table').find(name='tr',attrs={'class':'tr1'}).find(name='th',attrs={'class':'r_two'}).b.text == author):
-            content = item.table.find(name='tr',attrs={'class':'tr1'}).find(name='th',attrs={'class':'r_one'}
-                                                                            ).find(name='div',attrs={'class':'tpc_content'}).text
-            writeContent(content)
-            print(content)
-            print("")
-    
-
-    
 #获得帖子中共有多少页
-def getContentPage(soup):
-    divItems = soup.body.find('div',id='main').findAll(name='div',attrs={'class':'t3'})
-    #获得页数的节点
-    pageAccounts = divItems[2].table.tr.td.find(name='div',attrs={'class':'pages'}).findAll(name='a',attrs={'style':None})
-    pageAccount = pageAccounts[len(pageAccounts)-1].text
+def getContentPage(html):
+    selector = etree.HTML(html)
+    lastpage = selector.xpath('//*[@id="last"]')[0].attrib['href']
+    pageAccount = ''.join(list(filter(str.isdigit,lastpage[-5:])))
     print("页数为：" + pageAccount)
     return pageAccount
 
-
-
-#获得作者名字
-def getAuthor(soup):
-    author = soup.body.find('div',id='main').find(name='div',attrs={'class':'t t2'}
-                                                  ).find('table').find(name='tr',attrs={'class':'tr3 tr1'}).find('font').b.text
-    print("作者为：" + author)
-    return author
-
-
 #获得文章
 def getArtilcle(url):
-    resp=urllib.request.urlopen(url)
+    # url='http://cc.bearhk.info/htm_data/20/1509/1639779.html'
+    request = urllib.request.Request(url, headers = headers)
+    resp=opener.open(request)
     html=resp.read().decode('gbk')
-    soup = BeautifulSoup(html)
-
     #取得帖子的页数
-    account = getContentPage(soup)
-    #取得文章的作者
-    author = getAuthor(soup)
+    account = getContentPage(html)
     #取得内容，并将内容存入txt
-    content = getContent(soup , author ,url ,account)
+    content = getContent(html, url ,account)
     
 
 #获得图片
 def getPicture(url):
-    #url="http://wo.yao.cl/htm_data/8/1412/1313643.html"
-    resp=urllib.request.urlopen(url)
-    soup = BeautifulSoup(resp)
-    contents = soup.body.find(name='div',attrs={'id':'main'}).findAll(name='div',attrs={'class':'t t2'})
+    url="http://cc.bearhk.info/htm_data/8/1412/1313643.html"
+    page=url[-12:-5]
+    request = urllib.request.Request(url, headers = headers)
+    resp=opener.open(request)
+    selector = etree.HTML(resp.read())
+    contents = selector.xpath('//input[@type="image"]/@src')
     #获得网页内容
+    i = 0
     for item in contents:
-        pictures = item.table.find(name='tr',attrs={'class':'tr3 tr1'}).find(name='th',attrs={'class':'r_one'}
-                                                                            ).table.tr.td.find(name='div',attrs={'class':'tpc_content'}).findAll(name='input')
-        i = 0
-        for tag in pictures:
-            print(tag['src'])
-            conn = urllib.request.urlopen(tag['src'])
-            f=open(str(i)+".jpg",'wb')
-            i=i+1
-            f.write(conn.read())
-            f.close()
-    resp.close();
-
-    
-    
+        print(item)
+        request = urllib.request.Request(item, headers = headers)
+        conn = opener.open(request)
+        f=open(page+'-'+str(i)+".jpg",'wb')
+        i += 1
+        f.write(conn.read())
+        f.close()
 
 
 if __name__ == "__main__":
